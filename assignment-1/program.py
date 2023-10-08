@@ -53,7 +53,18 @@ class TextLexer:
 
     return stopwords
 
-with open(base, 'r', encoding='utf-8') as f:
-    for file in f.readlines():
-      base_file = BaseFile(file.replace('\n', ''))
-      base_file.extract_terms()
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: modelo_booleano.py <base_file> <consult_file>")
+        sys.exit(1)
+
+    base = sys.argv[1]
+    consult_file = sys.argv[2]
+
+    with open(base, 'r', encoding='utf-8') as f:
+        for file in f.readlines():
+            base_file = BaseFile(file.strip())
+            base_file.extract_terms()
+
+if __name__ == "__main__":
+    main()
