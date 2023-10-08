@@ -1,23 +1,48 @@
-# %%writefile modelo_booleano.py
-#!usr/bin/bash python
-
 import nltk
 import sys
 
 nltk.download("stopwords")
 nltk.download('punkt')
+nltk.download("rslp")
 
-base = sys.argv[1]
-consult_file = sys.argv[2] 
+def create_inverted_index(files):
+  index_file = 'indice.txt'
 
-print(base)
-print(consult_file)
+  booleanModel = BooleanModel().create(files)
 
-class Term():
+  with open(index_file, 'w') as f:
+    # TODO: convert to string builder
+    string = ''
+    for term, tupls in booleanModel.items():
+      string += f"{term}:"
+      for tupl in tupls:
+        string += f" {str(tupl[0])},{str(tupl[1])}"
+      string += "\n"
+    
+    f.write(string)
+
+  return booleanModel
+
+class BooleanModel:
+  def create(self, files):
+      boolean_model = {}
+
+      for i, file in enumerate(files):
+        file_index = file.generate_boolean_model()
+        for key, value in file_index.items():
+            tupl = (i + 1, value)
+            if (key in boolean_model):
+              boolean_model[key].append(tupl)
+            else:
+              boolean_model[key] = [tupl]
+
+      return boolean_model
+
+class Term:
     def __init__(self, value):
         self.value = value
 
-class Expr():
+class Expr:
     def __init__(self, kind):
         self.kind = kind
         self.left = None
@@ -33,7 +58,7 @@ class Consult:
         }
         self.lexer = lexer
 
-  def generateAST(self):
+  def generate_ast(self):
     tokens = self.lexer.tokenize_text(self.text)
     ast = None
     lastNode = None
@@ -44,7 +69,6 @@ class Consult:
         expr = Expr(tokens[i])
         
         if (self.keywords[tokens[i]] == self.keywords['!'] or i == len(tokens) - 2):
-          print("aaaa ")
           find_next_position_term = True
         else:
           find_next_position_term = False
@@ -62,41 +86,51 @@ class Consult:
 
     return ast
 
-  def printAST(self, n, depth=0):
-      if n:
-        if isinstance(n, Term):
-          print("  " * depth + n.value)
-        elif isinstance(n.right, Expr):
-          print("  " * depth + n.kind)
-          self.printAST(n.left, depth + 1)
-          self.printAST(n.right, depth + 1)
-
 class BaseFile:
   def __init__(self, name, lexer):
         self.name = name
         self.terms = []
-        self.tokens = []
         self.lexer = lexer
+
+  def generate_boolean_model(self):
+    self.extract_terms()
+    boolean_model = {}
+
+    for t in self.terms:
+      radical = self.lexer.extract_radical(t)
+      if (radical in boolean_model):
+        boolean_model[radical] += 1
+      else:
+        boolean_model[radical] = 1
+
+    return boolean_model
 
   def extract_terms(self):
     with open(self.name, 'r', encoding='utf-8') as f:
       text = f.read()
-      self.tokens = self.lexer.tokenize_text(text)
-      self.terms = self.remove_stopwords() 
+      tokens = self.extract_tokens(text)
+      self.terms = self.remove_stopwords(tokens) 
 
-  def remove_stopwords(self):
+  def extract_tokens(self, text):
+    return self.lexer.tokenize_text(text)
+
+  def remove_stopwords(self, tokens):
     stopwords = self.lexer.get_stopwords()
-    clean_terms = []
+    clean_tokens = []
 
-    for term in self.tokens:
-      if (not term in stopwords):
-        clean_terms.append(term)
+    for token in tokens:
+      if (not token in stopwords):
+        clean_tokens.append(token)
 
-    return clean_terms
+    return clean_tokens
 
 class TextLexer:
   def __init__(self, nltk):
         self.nltk = nltk
+  
+  def extract_radical(self, term):
+      extrator = nltk.stem.RSLPStemmer()
+      return extrator.stem(term) 
 
   def tokenize_text(self, text):
     return self.nltk.word_tokenize(text)
@@ -120,15 +154,20 @@ def main():
 
     lexer = TextLexer(nltk)
 
+    base_files = []
+
     with open(base, 'r', encoding='utf-8') as f:
         for file in f.readlines():
             base_file = BaseFile(file.strip(), lexer)
-            base_file.extract_terms()
+            base_files.append(base_file)
 
     with open(consult_file, 'r', encoding='utf-8') as f:
       text = f.read()
-      consult = Consult(text.strip(), lexer)
-      print(consult.generateAST())
+      consult_text = text.strip()
+
+    consult = Consult(consult_text, lexer)
+    inverted_index = create_inverted_index(base_files)
+    #consult.evaluate(inverted_index)
 
 if __name__ == "__main__":
     main()
