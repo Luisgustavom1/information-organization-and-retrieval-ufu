@@ -1,3 +1,5 @@
 **/*.samba
 *.zip
 *.10
+*.bin
+*.pyc
