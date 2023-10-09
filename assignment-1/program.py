@@ -5,12 +5,10 @@ nltk.download("stopwords")
 nltk.download('punkt')
 nltk.download("rslp")
 
-def create_inverted_index(files):
-  index_file = 'indice.txt'
+class InvertedIndex: 
+  def create(self, booleanModel):
+    index_file = 'indice.txt'
 
-  booleanModel = BooleanModel().create(files)
-
-  with open(index_file, 'w') as f:
     # TODO: convert to string builder
     string = ''
     for term, tupls in booleanModel.items():
@@ -18,10 +16,11 @@ def create_inverted_index(files):
       for tupl in tupls:
         string += f" {str(tupl[0])},{str(tupl[1])}"
       string += "\n"
-    
-    f.write(string)
 
-  return booleanModel
+    with open(index_file, 'w') as f:
+      f.write(string)
+
+    return string
 
 class BooleanModel:
   def create(self, files):
@@ -52,9 +51,9 @@ class Consult:
   def __init__(self, text, lexer):
         self.text = text
         self.keywords = {
-            "|": "OR",
-            "&": "AND",
-            "!": "NOT",
+            "|": "|",
+            "&": "&",
+            "!": "!",
         }
         self.lexer = lexer
 
@@ -74,9 +73,9 @@ class Consult:
           find_next_position_term = False
 
         if (find_next_position_term):
-          expr.left = Term(tokens[i + 1])
+          expr.left = Term(self.lexer.extract_radical(tokens[i + 1]))
         else:
-          expr.left = Term(tokens[i - 1])
+          expr.left = Term(self.lexer.extract_radical(tokens[i - 1]))
 
         if (ast is None):
           ast = expr
@@ -85,6 +84,45 @@ class Consult:
         lastNode = expr
 
     return ast
+
+  def evaluate(self, ast, boolean_model):
+    if (ast is None):
+      return set()
+
+    if (isinstance(ast, Term)):
+      return self.files_set(boolean_model[ast.value])
+
+    left = self.evaluate(ast.left, boolean_model)
+    right = self.evaluate(ast.right, boolean_model)
+
+    print(f"left {left}")
+    print(f"right {right}")
+
+    if (ast.kind == self.keywords["&"]):
+      return left.union(right)
+    if (ast.kind == self.keywords["|"]):
+      return left.union(right)
+    if (ast.kind == self.keywords["!"]):
+      return right - left
+
+  def files_set(self, tuplas):
+    files = set()
+    for tupl in tuplas:
+      files.add(tupl[0])
+    return files
+
+  def response(self, boolean_model, base):
+    response_file = 'resposta.txt'
+    ast = self.generate_ast()
+
+    files = self.evaluate(ast, boolean_model)
+    
+    string = f"{len(files)}\n"
+    for file in files:
+      string += f"{base[file - 1].name}\n"
+
+    with open(response_file, 'w') as f:
+      f.write(string)
 
 class BaseFile:
   def __init__(self, name, lexer):
@@ -136,7 +174,7 @@ class TextLexer:
     return self.nltk.word_tokenize(text)
 
   def get_stopwords(self):
-    stopwords_list = self.nltk.corpus.stopwords.words("portuguese")+[' ', '.', '...', ',', '!', '?', '\n', '\r\n']
+    stopwords_list = self.nltk.corpus.stopwords.words("portuguese")+[' ', '.', '..', '...', ',', '!', '?', '\n', '\r\n']
     stopwords = {}
 
     for stopword in stopwords_list:
@@ -166,8 +204,10 @@ def main():
       consult_text = text.strip()
 
     consult = Consult(consult_text, lexer)
-    inverted_index = create_inverted_index(base_files)
-    #consult.evaluate(inverted_index)
+
+    boolean_model = BooleanModel().create(base_files)
+    # inverted_index = InvertedIndex().create(boolean_model)
+    consult.response(boolean_model, base_files)
 
 if __name__ == "__main__":
     main()
