@@ -68,7 +68,7 @@ class Consult:
             "&": "&",
             "!": "!",
         }
-        self.tokens = []
+        self.tokens = lexer.tokenize_text(text)
         self.lexer = lexer
         self.index = 0
 
@@ -78,11 +78,11 @@ class Consult:
       while self.index < len(self.tokens):
           token = self.tokens[self.index]
 
-          if token == self.keywords['!']:
+          if token == self.keywords["!"]:
               self.index += 1
               right = self.parse_term()
-              left = Expr(self.keywords['!'], None, right)
-          elif token in (self.keywords['&'], self.keywords['|']):
+              left = Expr(self.keywords["!"], left, right)
+          elif token in (self.keywords["&"], self.keywords["|"]):
               kind = token
               self.index += 1
               right = self.parse_term()
@@ -116,22 +116,25 @@ class Consult:
         if a.right:
             self.print_ast(a.right, indent + "  ")
 
-  def evaluate(self, ast, boolean_model):
+  def evaluate(self, ast, boolean_model, base):
     if (ast is None):
       return set()
 
     if (isinstance(ast, Term)):
       return self.files_set(boolean_model[ast.value])
 
-    left = self.evaluate(ast.left, boolean_model)
-    right = self.evaluate(ast.right, boolean_model)
-
+    if (ast.kind == self.keywords["!"]):
+      all_docs = set(range(1, len(base) + 1))
+      right = self.evaluate(ast.right, boolean_model, base)
+      return all_docs - right
     if (ast.kind == self.keywords["&"]):
+      left = self.evaluate(ast.left, boolean_model, base)
+      right = self.evaluate(ast.right, boolean_model, base)
       return left.intersection(right)
     if (ast.kind == self.keywords["|"]):
+      left = self.evaluate(ast.left, boolean_model, base)
+      right = self.evaluate(ast.right, boolean_model, base)
       return left.union(right)
-    if (ast.kind == self.keywords["!"]):
-      return right - left
 
     return ast.value in boolean_model
 
@@ -151,7 +154,7 @@ class Consult:
     print(f"{ast.left.left.value} {ast.left.right.kind}    - {ast.right.right.value}")
     print(f"- - {ast.left.right.right.value} -    - -")
     # set(range(1, len(base) + 1))
-    files = self.evaluate(ast, boolean_model)
+    files = self.evaluate(ast, boolean_model, base)
     print(files)
     string = f"{len(files)}\n"
     for file in files:
