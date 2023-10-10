@@ -2,32 +2,33 @@ import nltk
 import sys
 
 nltk.download("stopwords")
-nltk.download('punkt')
+nltk.download("punkt")
 nltk.download("rslp")
+nltk.download("mac_morpho")
 
 class InvertedIndex: 
   def create(self, booleanModel):
-    index_file = 'indice.txt'
+    index_file = "indice.txt"
 
     # TODO: convert to string builder
-    string = ''
+    string = ""
     for term, tupls in booleanModel.items():
       string += f"{term}:"
       for tupl in tupls:
         string += f" {str(tupl[0])},{str(tupl[1])}"
       string += "\n"
 
-    with open(index_file, 'w') as f:
+    with open(index_file, "w") as f:
       f.write(string)
 
-    return string
+      return string
 
 class BooleanModel:
   def create(self, files):
       boolean_model = {}
 
       for i, file in enumerate(files):
-        file_index = file.generate_boolean_model()
+        file_index = self.generate_boolean_model(file)
         for key, value in file_index.items():
             tupl = (i + 1, value)
             if (key in boolean_model):
@@ -37,15 +38,27 @@ class BooleanModel:
 
       return boolean_model
 
+  def generate_boolean_model(self, file):
+    file.extract_terms()
+    boolean_model = {}
+
+    for term in file.terms:
+      if (term in boolean_model):
+        boolean_model[term] += 1
+      else:
+        boolean_model[term] = 1
+
+    return boolean_model
+
 class Term:
     def __init__(self, value):
         self.value = value
 
 class Expr:
-    def __init__(self, kind):
+    def __init__(self, kind, left=None, right=None):
         self.kind = kind
-        self.left = None
-        self.right = None
+        self.left = left
+        self.right = right
 
 class Consult:
   def __init__(self, text, lexer):
@@ -55,35 +68,53 @@ class Consult:
             "&": "&",
             "!": "!",
         }
+        self.tokens = []
         self.lexer = lexer
+        self.index = 0
 
   def generate_ast(self):
-    tokens = self.lexer.tokenize_text(self.text)
-    ast = None
-    lastNode = None
-    find_next_position_term = False
+      left = self.parse_term()
 
-    for i in range(1, len(tokens)):
-      if (tokens[i] in self.keywords):
-        expr = Expr(tokens[i])
-        
-        if (self.keywords[tokens[i]] == self.keywords['!'] or i == len(tokens) - 2):
-          find_next_position_term = True
-        else:
-          find_next_position_term = False
+      while self.index < len(self.tokens):
+          token = self.tokens[self.index]
 
-        if (find_next_position_term):
-          expr.left = Term(self.lexer.extract_radical(tokens[i + 1]))
-        else:
-          expr.left = Term(self.lexer.extract_radical(tokens[i - 1]))
+          if token == self.keywords['!']:
+              self.index += 1
+              right = self.parse_term()
+              left = Expr(self.keywords['!'], None, right)
+          elif token in (self.keywords['&'], self.keywords['|']):
+              kind = token
+              self.index += 1
+              right = self.parse_term()
+              left = Expr(kind, left, right)
+          else:
+              raise SyntaxError("Operador inválido")
 
-        if (ast is None):
-          ast = expr
-        else:
-          lastNode.right = expr
-        lastNode = expr
+      return left
 
-    return ast
+  def parse_term(self):
+      if self.index >= len(self.tokens):
+          return None
+
+      token = self.tokens[self.index]
+      self.index += 1
+
+      if token == self.keywords['!']:
+          return Expr(self.keywords['!'], None, self.parse_term())
+      elif token.isalpha():
+          return Term(self.lexer.extract_radical(token))
+      else:
+          raise SyntaxError("Token inválido")
+
+  def print_ast(self, a, indent=""):
+    if isinstance(a, Term):
+        print(indent + "Term: " + a.value)
+    elif isinstance(a, Expr):
+        print(indent + "Expr: " + a.kind)
+        if a.left:
+            self.print_ast(a.left, indent + "  ")
+        if a.right:
+            self.print_ast(a.right, indent + "  ")
 
   def evaluate(self, ast, boolean_model):
     if (ast is None):
@@ -95,15 +126,14 @@ class Consult:
     left = self.evaluate(ast.left, boolean_model)
     right = self.evaluate(ast.right, boolean_model)
 
-    print(f"left {left}")
-    print(f"right {right}")
-
     if (ast.kind == self.keywords["&"]):
-      return left.union(right)
+      return left.intersection(right)
     if (ast.kind == self.keywords["|"]):
       return left.union(right)
     if (ast.kind == self.keywords["!"]):
       return right - left
+
+    return ast.value in boolean_model
 
   def files_set(self, tuplas):
     files = set()
@@ -112,16 +142,22 @@ class Consult:
     return files
 
   def response(self, boolean_model, base):
-    response_file = 'resposta.txt'
+    response_file = "resposta.txt"
     ast = self.generate_ast()
 
+    # self.print_ast(ast)
+    print(f"     {ast.kind}")
+    print(f"   {ast.left.kind}    {ast.right.kind}")
+    print(f"{ast.left.left.value} {ast.left.right.kind}    - {ast.right.right.value}")
+    print(f"- - {ast.left.right.right.value} -    - -")
+    # set(range(1, len(base) + 1))
     files = self.evaluate(ast, boolean_model)
-    
+    print(files)
     string = f"{len(files)}\n"
     for file in files:
       string += f"{base[file - 1].name}\n"
 
-    with open(response_file, 'w') as f:
+    with open(response_file, "w") as f:
       f.write(string)
 
 class BaseFile:
@@ -130,24 +166,12 @@ class BaseFile:
         self.terms = []
         self.lexer = lexer
 
-  def generate_boolean_model(self):
-    self.extract_terms()
-    boolean_model = {}
-
-    for t in self.terms:
-      radical = self.lexer.extract_radical(t)
-      if (radical in boolean_model):
-        boolean_model[radical] += 1
-      else:
-        boolean_model[radical] = 1
-
-    return boolean_model
-
   def extract_terms(self):
-    with open(self.name, 'r', encoding='utf-8') as f:
+    with open(self.name, "r", encoding="utf-8") as f:
       text = f.read()
       tokens = self.extract_tokens(text)
-      self.terms = self.remove_stopwords(tokens) 
+      self.terms = self.remove_stopwords(tokens)
+      self.terms.sort()
 
   def extract_tokens(self, text):
     return self.lexer.tokenize_text(text)
@@ -158,23 +182,23 @@ class BaseFile:
 
     for token in tokens:
       if (not token in stopwords):
-        clean_tokens.append(token)
+        clean_tokens.append(self.lexer.extract_radical(token))
 
     return clean_tokens
 
 class TextLexer:
   def __init__(self, nltk):
-        self.nltk = nltk
+    self.nltk = nltk
   
   def extract_radical(self, term):
-      extrator = nltk.stem.RSLPStemmer()
-      return extrator.stem(term) 
+    extrator = nltk.stem.RSLPStemmer()
+    return extrator.stem(term) 
 
   def tokenize_text(self, text):
     return self.nltk.word_tokenize(text)
 
   def get_stopwords(self):
-    stopwords_list = self.nltk.corpus.stopwords.words("portuguese")+[' ', '.', '..', '...', ',', '!', '?', '\n', '\r\n']
+    stopwords_list = self.nltk.corpus.stopwords.words("portuguese")+[" ", ".", "..", "...", ",", "!", "?", "\n", "\r\n", "daqui", "enquanto", "porque", "pra", "embora", "pois", "sobre"]
     stopwords = {}
 
     for stopword in stopwords_list:
@@ -194,19 +218,19 @@ def main():
 
     base_files = []
 
-    with open(base, 'r', encoding='utf-8') as f:
+    with open(base, "r", encoding="utf-8") as f:
         for file in f.readlines():
             base_file = BaseFile(file.strip(), lexer)
             base_files.append(base_file)
 
-    with open(consult_file, 'r', encoding='utf-8') as f:
+    with open(consult_file, "r", encoding="utf-8") as f:
       text = f.read()
       consult_text = text.strip()
 
     consult = Consult(consult_text, lexer)
 
     boolean_model = BooleanModel().create(base_files)
-    # inverted_index = InvertedIndex().create(boolean_model)
+    inverted_index = InvertedIndex().create(boolean_model)
     consult.response(boolean_model, base_files)
 
 if __name__ == "__main__":
