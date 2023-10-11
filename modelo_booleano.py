@@ -115,30 +115,24 @@ class Consult:
 
   def generate_ast(self):
     left = self.parse_term()
-
     while self.index < len(self.tokens):
       token = self.tokens[self.index]
       self.index += 1
-
-      if token == self.keywords["!"]:
-        right = self.parse_term()
-        left = Expr(self.keywords["!"], left, right)
-      elif token in (self.keywords["&"], self.keywords["|"]):
-        right = self.parse_term()
-        left = Expr(token, left, right)
+      if token in self.keywords:
+        left = Expr(token, left, self.parse_term())
       else:
-        # TODO: review this position error, I think that's wrong
-        raise SyntaxError(f"Unexpected token in position: {self.index}, received: {token}")
+        # TODO: not get position by index, add metadata to tokens
+        raise SyntaxError(f"unexpected token in position: {self.index}, received: {token}")
     return left
 
   def parse_term(self):
     token = self.tokens[self.index]
     self.index += 1
     if token == self.keywords['!']:
-      return Expr(self.keywords['!'], None, self.parse_term())
+      return Expr(token, None, self.parse_term())
     if token.isalpha():
       return Term(self.lexer.extract_radical(token))
-    raise SyntaxError("Unexpected token")
+    raise SyntaxError("unexpected token")
 
   def evaluate(self, ast, boolean_model, base):
     if ast is None:
