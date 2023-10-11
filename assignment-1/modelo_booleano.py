@@ -6,10 +6,30 @@ nltk.download("punkt")
 nltk.download("rslp")
 nltk.download("mac_morpho")
 
-class InvertedIndex: 
-  def create(self, booleanModel):
-    index_file = "indice.txt"
+# Class responsible for storage
+class Storage:
+  def write(self, file, content):
+    with open(file, "w") as f:
+      f.write(content)
 
+# Class to generate response
+class Response:
+  def __init__(self):
+    self.file = "resposta.txt"
+
+  def build(self, files, base):
+    string = f"{len(files)}\n"
+    for file in files:
+      string += f"{base[file - 1].name}\n"
+
+    return string
+
+# Class to build inverted index from the boolean model
+class InvertedIndex: 
+  def __init__(self):
+    self.file = "indice.txt"
+
+  def build(self, booleanModel):
     # TODO: convert to string builder
     string = ""
     for term, tupls in booleanModel.items():
@@ -18,17 +38,15 @@ class InvertedIndex:
         string += f" {str(tupl[0])},{str(tupl[1])}"
       string += "\n"
 
-    with open(index_file, "w") as f:
-      f.write(string)
+    return string
 
-      return string
-
+# Class to generate boolean model
 class BooleanModel:
   def create(self, files):
       boolean_model = {}
 
       for i, file in enumerate(files):
-        file_index = self.generate_boolean_model(file)
+        file_index = self.get_occurrences(file)
         for key, value in file_index.items():
             tupl = (i + 1, value)
             if (key in boolean_model):
@@ -38,7 +56,7 @@ class BooleanModel:
 
       return boolean_model
 
-  def generate_boolean_model(self, file):
+  def get_occurrences(self, file):
     file.extract_terms()
     boolean_model = {}
 
@@ -50,124 +68,12 @@ class BooleanModel:
 
     return boolean_model
 
-class Term:
-    def __init__(self, value):
-        self.value = value
-
-class Expr:
-    def __init__(self, kind, left=None, right=None):
-        self.kind = kind
-        self.left = left
-        self.right = right
-
-class Consult:
-  def __init__(self, text, lexer):
-        self.text = text
-        self.keywords = {
-            "|": "|",
-            "&": "&",
-            "!": "!",
-        }
-        self.tokens = lexer.tokenize_text(text)
-        self.lexer = lexer
-        self.index = 0
-
-  def generate_ast(self):
-      left = self.parse_term()
-
-      while self.index < len(self.tokens):
-          token = self.tokens[self.index]
-
-          if token == self.keywords["!"]:
-              self.index += 1
-              right = self.parse_term()
-              left = Expr(self.keywords["!"], left, right)
-          elif token in (self.keywords["&"], self.keywords["|"]):
-              kind = token
-              self.index += 1
-              right = self.parse_term()
-              left = Expr(kind, left, right)
-          else:
-              raise SyntaxError("Operador inválido")
-
-      return left
-
-  def parse_term(self):
-      if self.index >= len(self.tokens):
-          return None
-
-      token = self.tokens[self.index]
-      self.index += 1
-
-      if token == self.keywords['!']:
-          return Expr(self.keywords['!'], None, self.parse_term())
-      elif token.isalpha():
-          return Term(self.lexer.extract_radical(token))
-      else:
-          raise SyntaxError("Token inválido")
-
-  def print_ast(self, a, indent=""):
-    if isinstance(a, Term):
-        print(indent + "Term: " + a.value)
-    elif isinstance(a, Expr):
-        print(indent + "Expr: " + a.kind)
-        if a.left:
-            self.print_ast(a.left, indent + "  ")
-        if a.right:
-            self.print_ast(a.right, indent + "  ")
-
-  def evaluate(self, ast, boolean_model, base):
-    if (ast is None):
-      return set()
-
-    if (isinstance(ast, Term)):
-      return self.files_set(boolean_model[ast.value])
-
-    if (ast.kind == self.keywords["!"]):
-      all_docs = set(range(1, len(base) + 1))
-      right = self.evaluate(ast.right, boolean_model, base)
-      return all_docs - right
-    if (ast.kind == self.keywords["&"]):
-      left = self.evaluate(ast.left, boolean_model, base)
-      right = self.evaluate(ast.right, boolean_model, base)
-      return left.intersection(right)
-    if (ast.kind == self.keywords["|"]):
-      left = self.evaluate(ast.left, boolean_model, base)
-      right = self.evaluate(ast.right, boolean_model, base)
-      return left.union(right)
-
-    return ast.value in boolean_model
-
-  def files_set(self, tuplas):
-    files = set()
-    for tupl in tuplas:
-      files.add(tupl[0])
-    return files
-
-  def response(self, boolean_model, base):
-    response_file = "resposta.txt"
-    ast = self.generate_ast()
-
-    # self.print_ast(ast)
-    print(f"     {ast.kind}")
-    print(f"   {ast.left.kind}    {ast.right.kind}")
-    print(f"{ast.left.left.value} {ast.left.right.kind}    - {ast.right.right.value}")
-    print(f"- - {ast.left.right.right.value} -    - -")
-    # set(range(1, len(base) + 1))
-    files = self.evaluate(ast, boolean_model, base)
-    print(files)
-    string = f"{len(files)}\n"
-    for file in files:
-      string += f"{base[file - 1].name}\n"
-
-    with open(response_file, "w") as f:
-      f.write(string)
-
+# Class to represent each file in the base 
 class BaseFile:
   def __init__(self, name, lexer):
-        self.name = name
-        self.terms = []
-        self.lexer = lexer
+    self.name = name
+    self.terms = []
+    self.lexer = lexer
 
   def extract_terms(self):
     with open(self.name, "r", encoding="utf-8") as f:
@@ -188,6 +94,88 @@ class BaseFile:
         clean_tokens.append(self.lexer.extract_radical(token))
 
     return clean_tokens
+
+# Classes to build lexer, parser and interpreter the consult
+class Term:
+  def __init__(self, value):
+    self.value = value
+
+class Expr:
+  def __init__(self, kind, left=None, right=None):
+    self.kind = kind
+    self.left = left
+    self.right = right
+
+class Consult:
+  def __init__(self, text, lexer):
+    self.text = text
+    self.keywords = {
+      "|": "|",
+      "&": "&",
+      "!": "!",
+    }
+    self.tokens = lexer.tokenize_text(text)
+    self.lexer = lexer
+    self.index = 0
+
+  def generate_ast(self):
+    left = self.parse_term()
+
+    while self.index < len(self.tokens):
+      token = self.tokens[self.index]
+      self.index += 1
+
+      if token == self.keywords["!"]:
+        right = self.parse_term()
+        left = Expr(self.keywords["!"], left, right)
+      elif token in (self.keywords["&"], self.keywords["|"]):
+        right = self.parse_term()
+        left = Expr(token, left, right)
+      else:
+        # TODO: review this position error, I think that's wrong
+        raise SyntaxError(f"Unexpected token in position: {self.index}, receive: {token}")
+
+    return left
+
+  def parse_term(self):
+    token = self.tokens[self.index]
+    self.index += 1
+
+    if token == self.keywords['!']:
+      return Expr(self.keywords['!'], None, self.parse_term())
+    if token.isalpha():
+      return Term(self.lexer.extract_radical(token))
+    raise SyntaxError("Unexpected token")
+
+  def evaluate(self, ast, boolean_model, base):
+    if (ast is None):
+      return set()
+
+    if (isinstance(ast, Term)):
+      return self.files_set(boolean_model[ast.value])
+
+    left = self.evaluate(ast.left, boolean_model, base)
+    right = self.evaluate(ast.right, boolean_model, base)
+
+    if (ast.kind == self.keywords["&"]):
+      return left & right
+    if (ast.kind == self.keywords["|"]):
+      return left | right
+    if (ast.kind == self.keywords["!"]):
+      all_base = set(range(1, len(base) + 1))
+      return all_base - right
+
+  def files_set(self, tuplas):
+    files = set()
+    for tupl in tuplas:
+      files.add(tupl[0])
+    return files
+
+  def response(self, boolean_model, base):
+    ast = self.generate_ast()
+    files = self.evaluate(ast, boolean_model, base)
+
+    return files
 
 class TextLexer:
   def __init__(self, nltk):
@@ -210,31 +198,41 @@ class TextLexer:
     return stopwords
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: modelo_booleano.py <base_file> <consult_file>")
-        sys.exit(1)
+  if len(sys.argv) != 3:
+      print("Usage: modelo_booleano.py <baseTxt> <consultTxt>")
+      sys.exit(1)
 
-    base = sys.argv[1]
-    consult_file = sys.argv[2]
+  baseTxt = sys.argv[1]
+  consultTxt = sys.argv[2]
 
-    lexer = TextLexer(nltk)
+  lexer = TextLexer(nltk)
+  storage = Storage()
 
-    base_files = []
+  base_files = []
 
-    with open(base, "r", encoding="utf-8") as f:
-        for file in f.readlines():
-            base_file = BaseFile(file.strip(), lexer)
-            base_files.append(base_file)
+  with open(baseTxt, "r", encoding="utf-8") as f:
+    for file in f.readlines():
+      base_file = BaseFile(file.strip(), lexer)
+      base_files.append(base_file)
 
-    with open(consult_file, "r", encoding="utf-8") as f:
-      text = f.read()
-      consult_text = text.strip()
+  with open(consultTxt, "r", encoding="utf-8") as f:
+    text = f.read()
+    consult_text = text.strip()
 
-    consult = Consult(consult_text, lexer)
+  boolean_model = BooleanModel().create(base_files)
 
-    boolean_model = BooleanModel().create(base_files)
-    inverted_index = InvertedIndex().create(boolean_model)
-    consult.response(boolean_model, base_files)
+  consult = Consult(consult_text, lexer)
+  result_files = consult.response(boolean_model, base_files)
+
+  inverted_index = InvertedIndex()
+  inverted_index_str = inverted_index.build(boolean_model)
+
+  response = Response()
+  response_str = response.build(result_files, base_files)
+
+  # Save files
+  storage.write(inverted_index.file, inverted_index_str)
+  storage.write(response.file, response_str)
 
 if __name__ == "__main__":
-    main()
+  main()
