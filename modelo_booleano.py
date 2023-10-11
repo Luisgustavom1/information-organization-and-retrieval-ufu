@@ -1,5 +1,5 @@
-import nltk
 import sys
+import nltk
 
 nltk.download("stopwords")
 nltk.download("punkt")
@@ -14,33 +14,31 @@ class Storage:
 
 # Class to generate response
 class Response:
-  def __init__(self):
-    self.file = "resposta.txt"
+  def __init__(self, file_name="resposta.txt"):
+    self.file = file_name
 
   def build(self, files, base):
-    string = f"{len(files)}\n"
+    response_str = f"{len(files)}\n"
     for file in files:
-      string += f"{base[file - 1].name}\n"
-
-    return string
+      response_str += f"{base[file - 1].name}\n"
+    return response_str
 
 # Class to build inverted index from the boolean model
-class InvertedIndex: 
-  def __init__(self):
-    self.file = "indice.txt"
+class InvertedIndex:
+  def __init__(self, file_name="indice.txt"):
+    self.file = file_name
 
-  def build(self, booleanModel):
+  def build(self, boolean_model):
     # TODO: convert to string builder
-    string = ""
-    for term, tupls in booleanModel.items():
-      string += f"{term}:"
+    inverted_index_str = ""
+    for term, tupls in boolean_model.items():
+      inverted_index_str += f"{term}:"
       for tupl in tupls:
-        string += f" {str(tupl[0])},{str(tupl[1])}"
-      string += "\n"
+        inverted_index_str += f" {str(tupl[0])},{str(tupl[1])}"
+      inverted_index_str += "\n"
 
-    return string
+    return inverted_index_str
 
-# Class to generate boolean model
 class BooleanModel:
   def create(self, files):
       boolean_model = {}
@@ -49,10 +47,7 @@ class BooleanModel:
         file_index = self.get_occurrences(file)
         for key, value in file_index.items():
             tupl = (i + 1, value)
-            if (key in boolean_model):
-              boolean_model[key].append(tupl)
-            else:
-              boolean_model[key] = [tupl]
+            boolean_model.setdefault(key, []).append(tupl)
 
       return boolean_model
 
@@ -133,14 +128,12 @@ class Consult:
         left = Expr(token, left, right)
       else:
         # TODO: review this position error, I think that's wrong
-        raise SyntaxError(f"Unexpected token in position: {self.index}, receive: {token}")
-
+        raise SyntaxError(f"Unexpected token in position: {self.index}, received: {token}")
     return left
 
   def parse_term(self):
     token = self.tokens[self.index]
     self.index += 1
-
     if token == self.keywords['!']:
       return Expr(self.keywords['!'], None, self.parse_term())
     if token.isalpha():
@@ -148,42 +141,35 @@ class Consult:
     raise SyntaxError("Unexpected token")
 
   def evaluate(self, ast, boolean_model, base):
-    if (ast is None):
+    if ast is None:
       return set()
-
-    if (isinstance(ast, Term)):
+    if isinstance(ast, Term):
       return self.files_set(boolean_model[ast.value])
-
     left = self.evaluate(ast.left, boolean_model, base)
     right = self.evaluate(ast.right, boolean_model, base)
-
-    if (ast.kind == self.keywords["&"]):
+    if ast.kind == self.keywords["&"]:
       return left & right
-    if (ast.kind == self.keywords["|"]):
+    if ast.kind == self.keywords["|"]:
       return left | right
-    if (ast.kind == self.keywords["!"]):
+    if ast.kind == self.keywords["!"]:
       all_base = set(range(1, len(base) + 1))
       return all_base - right
 
   def files_set(self, tuplas):
-    files = set()
-    for tupl in tuplas:
-      files.add(tupl[0])
-    return files
+    return {tupl[0] for tupl in tuplas}
 
   def response(self, boolean_model, base):
     ast = self.generate_ast()
     files = self.evaluate(ast, boolean_model, base)
-
     return files
 
 class TextLexer:
   def __init__(self, nltk):
     self.nltk = nltk
-  
+
   def extract_radical(self, term):
-    extrator = nltk.stem.RSLPStemmer()
-    return extrator.stem(term) 
+    extrator = self.nltk.stem.RSLPStemmer()
+    return extrator.stem(term)
 
   def tokenize_text(self, text):
     return self.nltk.word_tokenize(text)
