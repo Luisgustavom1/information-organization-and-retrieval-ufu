@@ -43,12 +43,12 @@ class VectorModel:
   def __init__(self):
     self.idf = {}
     self.tfIdf = {}
-    self.termsOccurrencesByDoc = {}
+    self.termFrequencyByDoc = {}
 
   def create(self, files):
       self.calculateIdf(files)
-      self.calculateTfIdf()
-      print(self.termsOccurrencesByDoc)
+      self.calculateTfIdf(files)
+      print(self.tfIdf)
 
   def calculateIdf(self, files):
     docsTermsOccurrences = {}
@@ -56,16 +56,15 @@ class VectorModel:
     for file in files:
       alreadyCount = {}
       for term in file.terms: 
-        if (file in self.termsOccurrencesByDoc):
-          termsOccurrencesInDoc = self.termsOccurrencesByDoc[file]
+        if (file in self.termFrequencyByDoc):
+          termsOccurrencesInDoc = self.termFrequencyByDoc[file]
           if (term in termsOccurrencesInDoc):
             termsOccurrencesInDoc[term] += 1
           else:
             termsOccurrencesInDoc[term] = 1
         else:
-          temp = {}
-          temp[term] = 1
-          self.termsOccurrencesByDoc[file] = temp
+          temp = {term: 1}
+          self.termFrequencyByDoc[file] = temp
 
         if (term not in alreadyCount):
           alreadyCount[term] = True
@@ -78,7 +77,17 @@ class VectorModel:
     for term in docsTermsOccurrences:
       self.idf[term] = math.log10(filesQtd/docsTermsOccurrences[term])
 
-  def calculateTfIdf(self):
+  def calculateTfIdf(self, files):
+    for file in files:
+      temp = []
+      terms = self.termFrequencyByDoc[file]
+      for term in terms:
+        if (term in terms):
+          tfIdf = (1 + math.log10(terms[term])) * self.idf[term]
+          temp.append((term, tfIdf))
+          
+      self.tfIdf[file] = temp
+
     return
 # Class to represent each file in the base 
 class BaseFile:
