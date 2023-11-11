@@ -24,19 +24,6 @@ class Response:
       response_str += f"{base[file - 1].name}\n"
     return response_str
 
-# Class to build inverted index from the boolean model
-class InvertedIndex:
-  def build(self, boolean_model):
-    # TODO: convert to string builder
-    inverted_index_str = ""
-    for term, tupls in boolean_model.items():
-      inverted_index_str += f"{term}:"
-      for tupl in tupls:
-        inverted_index_str += f" {str(tupl[0])},{str(tupl[1])}"
-      inverted_index_str += "\n"
-
-    return inverted_index_str
-
 # doc1: (peso1, peso2, peso3)
 # doc2: (peso1, peso2, peso3)
 class VectorModel:
@@ -56,15 +43,15 @@ class VectorModel:
     for file in files:
       alreadyCount = {}
       for term in file.terms: 
-        if (file in self.termFrequencyByDoc):
-          termsOccurrencesInDoc = self.termFrequencyByDoc[file]
+        if (file.name in self.termFrequencyByDoc):
+          termsOccurrencesInDoc = self.termFrequencyByDoc[file.name]
           if (term in termsOccurrencesInDoc):
             termsOccurrencesInDoc[term] += 1
           else:
             termsOccurrencesInDoc[term] = 1
         else:
           temp = {term: 1}
-          self.termFrequencyByDoc[file] = temp
+          self.termFrequencyByDoc[file.name] = temp
 
         if (term not in alreadyCount):
           alreadyCount[term] = True
@@ -80,15 +67,30 @@ class VectorModel:
   def calculateTfIdf(self, files):
     for file in files:
       temp = []
-      terms = self.termFrequencyByDoc[file]
+      terms = self.termFrequencyByDoc[file.name]
       for term in terms:
         if (term in terms):
           tfIdf = (1 + math.log10(terms[term])) * self.idf[term]
           temp.append((term, tfIdf))
           
-      self.tfIdf[file] = temp
+      self.tfIdf[file.name] = temp
 
     return
+
+class Weights:
+  def __init__(self):
+    self.file = "pesos.txt"
+
+  def create(self, tfIdf):
+    str = ""
+    for doc in tfIdf:
+      str += doc + ":"
+      for weight in tfIdf[doc]:
+        if (weight[1] > 0.0):
+          str += " " + weight[0] + "," + weight[1].__str__()
+      str += "\n"
+    return str
+
 # Class to represent each file in the base 
 class BaseFile:
   def __init__(self, name, lexer):
@@ -230,19 +232,20 @@ def main():
     text = f.read()
     consult_text = text.strip()
 
-  vectorModel = VectorModel().create(base_files)
+  vectorModel = VectorModel()
+  vectorModel.create(base_files)
+  
+  weights = Weights()
+  weightsFormatted = weights.create(vectorModel.tfIdf)
 
   # consult = Consult(consult_text, lexer)
   # result_files = consult.response(vectorModel, base_files)
-
-  # inverted_index = InvertedIndex()
-  # inverted_index_str = inverted_index.build(vectorModel)
-
+  
   # response = Response()
   # response_str = response.build(result_files, base_files)
 
   # # Save files
-  # storage.write(response.file, response_str)
+  storage.write(weights.file, weightsFormatted)
 
 if __name__ == "__main__":
   main()
