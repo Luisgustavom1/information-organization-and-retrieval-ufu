@@ -28,16 +28,15 @@ class Response:
 # doc2: (peso1, peso2, peso3)
 class VectorModel:
   def __init__(self):
-    self.idf = {}
-    self.tfIdf = {}
+    self.idfTerms = {}
+    self.tfIdfDocs = {}
     self.termFrequencyByDoc = {}
 
   def create(self, files):
-      self.calculateIdf(files)
-      self.calculateTfIdf(files)
-      print(self.tfIdf)
+      self.calculateIdfTerms(files)
+      self.calculateTfIdfDocs(files)
 
-  def calculateIdf(self, files):
+  def calculateIdfTerms(self, files):
     docsTermsOccurrences = {}
 
     for file in files:
@@ -62,30 +61,58 @@ class VectorModel:
     
     filesQtd = len(files)
     for term in docsTermsOccurrences:
-      self.idf[term] = math.log10(filesQtd/docsTermsOccurrences[term])
+      self.idfTerms[term] = self.calculateIdf(filesQtd, docsTermsOccurrences[term])
 
-  def calculateTfIdf(self, files):
+  def calculateTfIdfDocs(self, files):
     for file in files:
       temp = []
       terms = self.termFrequencyByDoc[file.name]
       for term in terms:
         if (term in terms):
-          tfIdf = (1 + math.log10(terms[term])) * self.idf[term]
+          tfIdf = self.calculateTfIdf(terms[term], self.idfTerms[term])
           temp.append((term, tfIdf))
           
-      self.tfIdf[file.name] = temp
+      self.tfIdfDocs[file.name] = temp
 
     return
+
+  def calculateSimilarity(self, v1, v2):
+    multiplicationSum = 0
+    squareSumV1 = 0
+    squareSumV2 = 0
+
+    for termWeight2 in v2:
+      term = termWeight2[0]
+      weight2 = termWeight2[1]
+      weight1 = 0
+
+      for termWeight1 in v1:
+        if term == termWeight1[0]:
+          weight1 = termWeight1[1]
+      
+      multiplicationSum += (weight1 * weight2)
+      squareSumV1 += math.pow(weight1, 2)
+      squareSumV2 += math.pow(weight2, 2)
+      
+    denominator = math.sqrt(squareSumV1) * math.sqrt(squareSumV2)
+
+    return (multiplicationSum / denominator) if denominator > 0 else 0
+
+  def calculateIdf(self, N, Ni):
+    return math.log10(N/Ni)
+
+  def calculateTfIdf(self, frequency, idfTerms):
+    return (1 + math.log10(frequency)) * idfTerms
 
 class Weights:
   def __init__(self):
     self.file = "pesos.txt"
 
-  def create(self, tfIdf):
+  def create(self, tfIdfDocs):
     str = ""
-    for doc in tfIdf:
+    for doc in tfIdfDocs:
       str += doc + ":"
-      for weight in tfIdf[doc]:
+      for weight in tfIdfDocs[doc]:
         if (weight[1] > 0.0):
           str += " " + weight[0] + "," + weight[1].__str__()
       str += "\n"
@@ -135,60 +162,35 @@ class Expr:
     self.right = right
 
 class Consult:
-  def __init__(self, text, lexer):
+  def __init__(self, text, lexer, vectorModel):
     self.text = text
     self.keywords = {
-      "|": "|",
       "&": "&",
-      "!": "!",
     }
-    self.tokens = lexer.tokenize_text(text)
     self.lexer = lexer
-    self.index = 0
+    self.tokens = lexer.tokenize_text(text)
+    self.vectorModel = vectorModel
 
-  def generate_ast(self):
-    left = self.parse_term()
-    while self.index < len(self.tokens):
-      token = self.tokens[self.index]
-      self.index += 1
-      if token in self.keywords:
-        left = Expr(token, left, self.parse_term())
-      else:
-        # TODO: not get position by index, add metadata to tokens
-        raise SyntaxError(f"unexpected token in position: {self.index}, received: {token}")
-    return left
+  def vectorWeights(self):
+    vector = []
+    for term in self.tokens:
+      if (term not in self.keywords):
+        t = self.lexer.extract_radical(term)
+        idf = self.vectorModel.idfTerms[t]
+        tfIdf = self.vectorModel.calculateTfIdf(1, idf)
+        vector.append((t, tfIdf))
 
-  def parse_term(self):
-    token = self.tokens[self.index]
-    self.index += 1
-    if token == self.keywords['!']:
-      return Expr(token, None, self.parse_term())
-    if token.isalpha():
-      return Term(self.lexer.extract_radical(token))
-    raise SyntaxError("unexpected token")
+    return vector
 
-  def evaluate(self, ast, boolean_model, base):
-    if ast is None:
-      return set()
-    if isinstance(ast, Term):
-      return self.files_set(boolean_model[ast.value])
-    left = self.evaluate(ast.left, boolean_model, base)
-    right = self.evaluate(ast.right, boolean_model, base)
-    if ast.kind == self.keywords["&"]:
-      return left & right
-    if ast.kind == self.keywords["|"]:
-      return left | right
-    if ast.kind == self.keywords["!"]:
-      all_base = set(range(1, len(base) + 1))
-      return all_base - right
-
-  def files_set(self, tuplas):
-    return {tupl[0] for tupl in tuplas}
-
-  def response(self, boolean_model, base):
-    ast = self.generate_ast()
-    files = self.evaluate(ast, boolean_model, base)
-    return files
+  def result(self, vectors):
+    consultVector = self.vectorWeights()
+    result = []
+    for doc in vectors:
+      sim = self.vectorModel.calculateSimilarity(consultVector, vectors[doc])
+      if sim > 0.001: 
+        result.append((doc, sim))
+    
+    return result
 
 class TextLexer:
   def __init__(self, nltk):
@@ -209,6 +211,16 @@ class TextLexer:
       stopwords[stopword] = stopword
 
     return stopwords
+
+class Response:
+  def __init__(self):
+    self.file = "resposta.txt"
+
+  def build(self, similaritiesArray):
+    str = len(similaritiesArray).__str__() + "\n"
+    for sim in similaritiesArray:
+      str += sim[0].__str__() + " " + sim[1].__str__() + "\n"
+    return str
 
 def main():
   if len(sys.argv) != 3:
@@ -236,16 +248,17 @@ def main():
   vectorModel.create(base_files)
   
   weights = Weights()
-  weightsFormatted = weights.create(vectorModel.tfIdf)
+  weightsFormatted = weights.create(vectorModel.tfIdfDocs)
 
-  # consult = Consult(consult_text, lexer)
-  # result_files = consult.response(vectorModel, base_files)
-  
-  # response = Response()
-  # response_str = response.build(result_files, base_files)
+  consult = Consult(consult_text, lexer, vectorModel)
+  result = consult.result(vectorModel.tfIdfDocs)
+
+  response = Response()
+  response_str = response.build(result)
 
   # # Save files
   storage.write(weights.file, weightsFormatted)
+  storage.write(response.file, response_str)
 
 if __name__ == "__main__":
   main()
