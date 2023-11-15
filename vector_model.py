@@ -13,17 +13,6 @@ class Storage:
     with open(file, "w") as f:
       f.write(content)
 
-# Class to generate response
-class Response:
-  def __init__(self, file_name="resposta.txt"):
-    self.file = file_name
-
-  def build(self, files, base):
-    response_str = f"{len(files)}\n"
-    for file in files:
-      response_str += f"{base[file - 1].name}\n"
-    return response_str
-
 # doc1: (peso1, peso2, peso3)
 # doc2: (peso1, peso2, peso3)
 class VectorModel:
@@ -37,64 +26,52 @@ class VectorModel:
       self.calculateTfIdfDocs(files)
 
   def calculateIdfTerms(self, files):
-    docsTermsOccurrences = {}
+    numberOfDocumentsWithTerm = {}
 
     for file in files:
-      alreadyCount = {}
+      alreadyCountTerm = {}
+      self.termFrequencyByDoc[file.name] = {}
       for term in file.terms: 
-        if (file.name in self.termFrequencyByDoc):
-          termsOccurrencesInDoc = self.termFrequencyByDoc[file.name]
-          if (term in termsOccurrencesInDoc):
-            termsOccurrencesInDoc[term] += 1
-          else:
-            termsOccurrencesInDoc[term] = 1
-        else:
-          temp = {term: 1}
-          self.termFrequencyByDoc[file.name] = temp
+        termsOccurrencesInDoc = self.termFrequencyByDoc[file.name]
+        termsOccurrencesInDoc[term] = termsOccurrencesInDoc.get(term, 0) + 1
 
-        if (term not in alreadyCount):
-          alreadyCount[term] = True
-          if (term in docsTermsOccurrences):
-            docsTermsOccurrences[term] += 1
-          else:
-            docsTermsOccurrences[term] = 1
-    
+        if (term not in alreadyCountTerm):
+          alreadyCountTerm[term] = True
+          numberOfDocumentsWithTerm[term] = numberOfDocumentsWithTerm.get(term, 0) + 1
+      
     filesQtd = len(files)
-    for term in docsTermsOccurrences:
-      self.idfTerms[term] = self.calculateIdf(filesQtd, docsTermsOccurrences[term])
-
+    for term in numberOfDocumentsWithTerm:
+      self.idfTerms[term] = self.calculateIdf(filesQtd, numberOfDocumentsWithTerm[term])
+    
   def calculateTfIdfDocs(self, files):
     for file in files:
       temp = []
       terms = self.termFrequencyByDoc[file.name]
       for term in terms:
-        if (term in terms):
-          tfIdf = self.calculateTfIdf(terms[term], self.idfTerms[term])
-          temp.append((term, tfIdf))
+        tfIdf = self.calculateTfIdf(terms[term], self.idfTerms[term])
+        temp.append((term, tfIdf))
           
       self.tfIdfDocs[file.name] = temp
 
     return
 
-  def calculateSimilarity(self, v1, v2):
+  def calculateSimilarity(self, consultVector, docVector):
     multiplicationSum = 0
-    squareSumV1 = 0
-    squareSumV2 = 0
-
-    for termWeight2 in v2:
-      term = termWeight2[0]
-      weight2 = termWeight2[1]
-      weight1 = 0
-
-      for termWeight1 in v1:
-        if term == termWeight1[0]:
-          weight1 = termWeight1[1]
+    squareSumConsultVector = 0
+    squareSumDocVector = 0
+  
+    for vectorTuple in docVector:
+      squareSumDocVector += math.pow(vectorTuple[1], 2)
       
-      multiplicationSum += (weight1 * weight2)
-      squareSumV1 += math.pow(weight1, 2)
-      squareSumV2 += math.pow(weight2, 2)
-      
-    denominator = math.sqrt(squareSumV1) * math.sqrt(squareSumV2)
+    for consultTuple in consultVector:
+      term = consultTuple[0]
+      weight = consultTuple[1]
+      squareSumConsultVector += math.pow(weight, 2)
+      for docTuple in docVector:
+        if docTuple[0] == term:
+          multiplicationSum += weight * docTuple[1]
+
+    denominator = math.sqrt(squareSumConsultVector) * math.sqrt(squareSumDocVector)
 
     return (multiplicationSum / denominator) if denominator > 0 else 0
 
@@ -102,7 +79,7 @@ class VectorModel:
     return math.log10(N/Ni)
 
   def calculateTfIdf(self, frequency, idfTerms):
-    return (1 + math.log10(frequency)) * idfTerms
+    return (1 + math.log10(frequency)) * idfTerms if frequency >= 1 else 0
 
 class Weights:
   def __init__(self):
@@ -135,7 +112,6 @@ class BaseFile:
       text = f.read()
       tokens = self.extract_tokens(text)
       self.terms = self.remove_stopwords(tokens)
-      self.terms.sort()
 
   def extract_tokens(self, text):
     return self.lexer.tokenize_text(text)
@@ -155,12 +131,6 @@ class Term:
   def __init__(self, value):
     self.value = value
 
-class Expr:
-  def __init__(self, kind, left=None, right=None):
-    self.kind = kind
-    self.left = left
-    self.right = right
-
 class Consult:
   def __init__(self, text, lexer, vectorModel):
     self.text = text
@@ -173,12 +143,17 @@ class Consult:
 
   def vectorWeights(self):
     vector = []
+    tokensFrequency = {}
+
     for term in self.tokens:
       if (term not in self.keywords):
         t = self.lexer.extract_radical(term)
-        idf = self.vectorModel.idfTerms[t]
-        tfIdf = self.vectorModel.calculateTfIdf(1, idf)
-        vector.append((t, tfIdf))
+        tokensFrequency[t] = tokensFrequency.get(t, 0) + 1
+
+    for term in tokensFrequency:
+      idf = self.vectorModel.idfTerms.get(term, 0)
+      tfIdf = self.vectorModel.calculateTfIdf(tokensFrequency[term], idf)
+      vector.append((term, tfIdf))
 
     return vector
 
@@ -187,7 +162,7 @@ class Consult:
     result = []
     for doc in vectors:
       sim = self.vectorModel.calculateSimilarity(consultVector, vectors[doc])
-      if sim > 0.001: 
+      if sim >= 0.001: 
         result.append((doc, sim))
     
     return result
@@ -204,7 +179,7 @@ class TextLexer:
     return self.nltk.word_tokenize(text)
 
   def get_stopwords(self):
-    stopwords_list = self.nltk.corpus.stopwords.words("portuguese")+[" ", ".", "..", "...", ",", "!", "?", "\n", "\r\n", "daqui", "enquanto", "porque", "pra", "embora", "pois", "sobre"]
+    stopwords_list = self.nltk.corpus.stopwords.words("portuguese")+[" ", ".", "..", "...", ",", "!", "?", "\n", "\r\n"]
     stopwords = {}
 
     for stopword in stopwords_list:
@@ -254,7 +229,7 @@ def main():
   result = consult.result(vectorModel.tfIdfDocs)
 
   response = Response()
-  response_str = response.build(result)
+  response_str = response.build(sorted(result, reverse=True, key=lambda tupl: tupl[1]))
 
   # # Save files
   storage.write(weights.file, weightsFormatted)
