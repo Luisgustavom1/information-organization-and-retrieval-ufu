@@ -1,11 +1,11 @@
 import sys
 import nltk
 import math
+import time
 
-nltk.download("stopwords")
-nltk.download("punkt")
-nltk.download("rslp")
-nltk.download("mac_morpho")
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('rslp')
 
 # Class responsible for storage
 class Storage:
@@ -45,11 +45,11 @@ class VectorModel:
     
   def calculateTfIdfDocs(self, files):
     for file in files:
-      temp = []
+      temp = {}
       terms = self.termFrequencyByDoc[file.name]
       for term in terms:
         tfIdf = self.calculateTfIdf(terms[term], self.idfTerms[term])
-        temp.append((term, tfIdf))
+        temp[term] = tfIdf
           
       self.tfIdfDocs[file.name] = temp
 
@@ -60,16 +60,14 @@ class VectorModel:
     squareSumConsultVector = 0
     squareSumDocVector = 0
   
-    for vectorTuple in docVector:
-      squareSumDocVector += math.pow(vectorTuple[1], 2)
+    for term in docVector:
+      squareSumDocVector += math.pow(docVector[term], 2)
       
     for consultTuple in consultVector:
       term = consultTuple[0]
       weight = consultTuple[1]
       squareSumConsultVector += math.pow(weight, 2)
-      for docTuple in docVector:
-        if docTuple[0] == term:
-          multiplicationSum += weight * docTuple[1]
+      multiplicationSum += weight * docVector.get(term, 0)
 
     denominator = math.sqrt(squareSumConsultVector) * math.sqrt(squareSumDocVector)
 
@@ -89,9 +87,10 @@ class Weights:
     str = ""
     for doc in tfIdfDocs:
       str += doc + ":"
-      for weight in tfIdfDocs[doc]:
-        if (weight[1] > 0.0):
-          str += " " + weight[0] + "," + weight[1].__str__()
+      for term in tfIdfDocs[doc]:
+        weight = tfIdfDocs[doc][term]
+        if (weight > 0.0):
+          str += " " + term + "," + weight.__str__()
       str += "\n"
     return str
 
@@ -108,13 +107,10 @@ class BaseFile:
     if (alreadyExtractTerms):
       return
     
-    with open(self.name, "r", encoding="utf-8") as f:
-      text = f.read()
-      tokens = self.extract_tokens(text)
-      self.terms = self.remove_stopwords(tokens)
+    with open(self.name, "r") as f:
+      text = f.readlines()[0]
 
-  def extract_tokens(self, text):
-    return self.lexer.tokenize_text(text)
+    self.terms = self.remove_stopwords(self.lexer.tokenize_text(text))
 
   def remove_stopwords(self, tokens):
     stopwords = self.lexer.get_stopwords()
@@ -210,12 +206,14 @@ def main():
 
   base_files = []
 
-  with open(baseTxt, "r", encoding="utf-8") as f:
-    for file in f.readlines():
-      base_file = BaseFile(file.strip(), lexer)
-      base_files.append(base_file)
+  with open(baseTxt, "r") as f:
+    files = f.readlines()
 
-  with open(consultTxt, "r", encoding="utf-8") as f:
+  for file in files:
+    base_file = BaseFile(file.strip(), lexer)
+    base_files.append(base_file)
+      
+  with open(consultTxt, "r") as f:
     text = f.read()
     consult_text = text.strip()
 
