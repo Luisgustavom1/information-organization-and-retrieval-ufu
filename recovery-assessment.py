@@ -1,7 +1,7 @@
 import sys
 import math
 import numpy as np
-import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 # Class responsible for storage
 class Storage:
@@ -22,43 +22,46 @@ class Response:
 class References:
   def __init__(self, referenceTextList, metricsService):
     self.referenceTextList = referenceTextList
-    self.numberOfConsults = 0
+    self.numberOfConsultations = 0
     self.metricsService = metricsService
     # (consult1[], {reference1: reference1}), (consult2[], {reference2: reference2}), (consult3[], {reference3: reference3})
-    self.consultReferenceTuples = []
+    self.consultationReferenceTuples = []
   
   def extractConsults(self):
-    self.numberOfConsults = int(self.referenceTextList[0].strip())
+    self.numberOfConsultations = int(self.referenceTextList[0].strip())
 
-    for index in range(1, self.numberOfConsults + 1):
+    for index in range(1, self.numberOfConsultations + 1):
       referenceMap = {}
       for reference in self.referenceTextList[index].split(' '):
         referenceMap[reference] = reference
 
-      tupl = (self.referenceTextList[index + self.numberOfConsults].split(' '), referenceMap)
-      self.consultReferenceTuples.append(tupl)
+      tupl = (self.referenceTextList[index + self.numberOfConsultations].split(' '), referenceMap)
+      self.consultationReferenceTuples.append(tupl)
 
-  def calculatePrecisionsMedia(self):
-    consultPrecisions = []
-
-    for consultReferenceTupl in self.consultReferenceTuples:
-      consultPrecisions.append(
+  def calculatePrecisions(self):
+    systemPrecisions = []
+    
+    for consultationReferenceTupl in self.consultationReferenceTuples:
+      systemPrecisions.append(
         self.metricsService.calculatePrecisions(
-          self.metricsService.calculate(consultReferenceTupl)
+          self.metricsService.calculate(consultationReferenceTupl)
         )
       )
 
-    return self.metricsService.calculateMedia(consultPrecisions)
+    return systemPrecisions
+
+  def calculatePrecisionsMedia(self, systemPrecisions):
+    return self.metricsService.calculateMedia(systemPrecisions)
 
 class Metrics:
   def __init__(self):
     self.revocations = [0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1]
 
-  def calculate(self, consultReferenceTupl):
+  def calculate(self, consultationReferenceTupl):
     # [allRevocations, allPrecisions]
     revocationPrecisionMatrix = [[], []]
-    consult = consultReferenceTupl[0]
-    reference = consultReferenceTupl[1]
+    consult = consultationReferenceTupl[0]
+    reference = consultationReferenceTupl[1]
 
     relevantDocsFound = 0
 
@@ -76,26 +79,26 @@ class Metrics:
   def calculatePrecisions(self, metric):
     revocationPrecisionMap = {}
     consultRevocations = metric[0]
-    consultPrecisions = metric[1]
+    systemPrecisions = metric[1]
     
     # greater precision in revocations greater than or equal to rJ
     for revocation in self.revocations:
       candidatePrecisions = []
       for index in range(len(consultRevocations)):
         if consultRevocations[index] >= revocation:
-          candidatePrecisions.append(consultPrecisions[index])
+          candidatePrecisions.append(systemPrecisions[index])
 
       revocationPrecisionMap[revocation] = np.array(candidatePrecisions).max() if len(candidatePrecisions) > 0 else 0
     
     return revocationPrecisionMap
 
-  def calculateMedia(self, consultPrecisions):
+  def calculateMedia(self, systemPrecisions):
     result = {}
     for revocation in self.revocations:
       sum = 0
-      for revocationPrecisionMap in consultPrecisions:
+      for revocationPrecisionMap in systemPrecisions:
         sum += revocationPrecisionMap[revocation]
-      result[revocation] = sum / len(consultPrecisions)
+      result[revocation] = sum / len(systemPrecisions)
 
     return result
 
@@ -112,14 +115,29 @@ def main():
 
   references = References(referencesText.split('\n'), Metrics())
   references.extractConsults()
-  precisionMedia = references.calculatePrecisionsMedia()
+  systemPrecisions = references.calculatePrecisions()
+  precisionMedia = references.calculatePrecisionsMedia(systemPrecisions)
 
   response = Response()
-  
   storage = Storage()
   # # Save files
   storage.write(response.file, response.build(precisionMedia))
-  # storage.write(response.file, response_str)
+
+  for index, systemPrecision in enumerate(systemPrecisions):
+    x = systemPrecision.values()
+    y = systemPrecision.keys()
+
+    plt.title('Consulta de referência ' + (index + 1).__str__())
+    plt.plot(x, y, '-o')  # a opção '-o' é para colocar um círculo sobre os pontos e liga-los por segmentos de reta
+    plt.show()
+
+  x = precisionMedia.values()
+  y = precisionMedia.keys()
+
+  plt.title('Média')
+  plt.plot(x, y, '-o')  # a opção '-o' é para colocar um círculo sobre os pontos e liga-los por segmentos de reta
+  plt.show()
+
 
 if __name__ == "__main__":
   main()
