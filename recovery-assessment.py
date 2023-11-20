@@ -102,6 +102,14 @@ class Metrics:
 
     return result
 
+def plotRevocationPrecisionGraph(revocation, precision, title):
+  plt.title(title)
+  plt.plot(revocation, precision, '-o')
+  plt.show()
+
+def convertToPercentage(n):
+  return n * 100
+
 def main():
   if len(sys.argv) != 2:
       print("Usage: modelo_booleano.py <referencesTxt>")
@@ -124,20 +132,18 @@ def main():
   storage.write(response.file, response.build(precisionMedia))
 
   for index, systemPrecision in enumerate(systemPrecisions):
-    x = systemPrecision.values()
-    y = systemPrecision.keys()
+    revocation = list(map(convertToPercentage, systemPrecision.keys()))
+    plotRevocationPrecisionGraph(
+      revocation,
+      systemPrecision.values(),
+      'Consulta de referência ' + (index + 1).__str__()
+    )
 
-    plt.title('Consulta de referência ' + (index + 1).__str__())
-    plt.plot(x, y, '-o')  # a opção '-o' é para colocar um círculo sobre os pontos e liga-los por segmentos de reta
-    plt.show()
-
-  x = precisionMedia.values()
-  y = precisionMedia.keys()
-
-  plt.title('Média')
-  plt.plot(x, y, '-o')  # a opção '-o' é para colocar um círculo sobre os pontos e liga-los por segmentos de reta
-  plt.show()
-
+  plotRevocationPrecisionGraph(
+    list(map(convertToPercentage, precisionMedia.keys())),
+    precisionMedia.values(),
+    "Média"
+  )
 
 if __name__ == "__main__":
   main()
